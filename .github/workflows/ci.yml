@@ -6,7 +6,7 @@ on:
     branches: [master]
 
 env:
-  GOLANGCI_LINT_VERSION: v2.1
+  GOLANGCI_LINT_VERSION: v2.3
 
 jobs:
   lint:
@@ -48,4 +48,4 @@ jobs:
         uses: codecov/codecov-action@v5
         if: ${{ matrix.os == 'ubuntu-24.04' }}
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          token: ${{ secrets.CODECOV_TOKEN }} # TODO: setup codecov
