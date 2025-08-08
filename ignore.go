@@ -18,7 +18,8 @@ type Ignore struct {
 func (i *Ignore) Match(fileName string, data []byte) (ret bool) {
 	if i.cache == nil {
 		i.cache = map[string]bool{}
-	} else if match, exists := i.cache[fileName]; exists {
+	}
+	if match, exists := i.cache[fileName]; exists {
 		return match
 	}
 
