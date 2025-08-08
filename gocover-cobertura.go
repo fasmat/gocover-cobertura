@@ -30,6 +30,7 @@ func main() {
 	ignoreDirsRe := flag.String("ignore-dirs", "", "ignore dirs matching this regexp")
 	ignoreFilesRe := flag.String("ignore-files", "", "ignore files matching this regexp")
 	buildTags := flag.String("build-tags", "", "build tags to use when loading packages")
+	flag.Parse()
 
 	var err error
 	if *ignoreDirsRe != "" {
@@ -175,7 +176,7 @@ func (cov *Coverage) parseProfile(profile *Profile, pkgPkg *packages.Package, ig
 	pkgPath = strings.TrimRight(strings.TrimRight(pkgPath, "/"), "\\")
 	pkgPath = filepath.Join(pkgPkg.Module.Path, pkgPath)
 	// TODO(boumenot): package paths are not file paths, there is a consistent separator
-	pkgPath = strings.ReplaceAll(pkgPath, "\\", "/", )
+	pkgPath = strings.ReplaceAll(pkgPath, "\\", "/")
 
 	var pkg *Package
 	for _, p := range cov.Packages {
