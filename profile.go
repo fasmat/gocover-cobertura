@@ -1,4 +1,5 @@
-// Imported from https://code.google.com/p/go/source/browse/cmd/cover/profile.go?repo=tools&r=c10a9dd5e0b0a859a8385b6f004584cb083a3934
+// Imported from
+// https://code.google.com/p/go/source/browse/cmd/cover/profile.go?repo=tools&r=c10a9dd5e0b0a859a8385b6f004584cb083a3934
 
 // Copyright 2013 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
@@ -39,7 +40,7 @@ func (p byFileName) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 // ParseProfiles parses profile data from the given Reader and returns a
 // Profile for each file.
-func ParseProfiles(in io.Reader, ignore *Ignore) ([]*Profile, error) {
+func ParseProfiles(in io.Reader, ignore *Ignore) ([]*Profile, error) { //nolint:gocyclo
 	files := make(map[string]*Profile)
 	// First line is "mode: foo", where foo is "set", "count", or "atomic".
 	// Rest of file is in the format
@@ -156,14 +157,12 @@ func (p *Profile) Boundaries(src []byte) []Boundary {
 	var boundaries []Boundary
 
 	// Find maximum count.
-	max := 0
+	maxValue := 0
 	for _, b := range p.Blocks {
-		if b.Count > max {
-			max = b.Count
-		}
+		maxValue = max(maxValue, b.Count)
 	}
 	// Divisor for normalization.
-	divisor := math.Log(float64(max))
+	divisor := math.Log(float64(maxValue))
 
 	// boundary returns a Boundary, populating the Norm field with a normalized Count.
 	boundary := func(offset int, start bool, count int) Boundary {
@@ -171,7 +170,7 @@ func (p *Profile) Boundaries(src []byte) []Boundary {
 		if !start || count == 0 {
 			return b
 		}
-		if max <= 1 {
+		if maxValue <= 1 {
 			b.Norm = 0.8 // Profile is in"set" mode; we want a heat map. Use cov8 in the CSS.
 		} else if count > 0 {
 			b.Norm = math.Log(float64(count)) / divisor

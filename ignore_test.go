@@ -7,6 +7,8 @@ import (
 )
 
 func TestIgnore(t *testing.T) {
+	t.Parallel()
+
 	empty := Ignore{}
 	dirs := Ignore{Dirs: regexp.MustCompile(`/bar$`)}
 	files := Ignore{Files: regexp.MustCompile(`bar/gen\.go$`)}
