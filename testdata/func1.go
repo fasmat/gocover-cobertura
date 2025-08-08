@@ -1,4 +1,5 @@
-// +build testdata
+//go:build testdata
+
 package testdata
 
 func Func1(arg1 *int) {
