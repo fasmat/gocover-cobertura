@@ -11,13 +11,16 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/tools/go/packages"
 )
 
 var SaveTestResults = false
 
 func Test_Main(t *testing.T) {
-	fname := filepath.Join(os.TempDir(), "stdout")
+	t.Parallel()
+
+	fname := filepath.Join(t.TempDir(), "stdout")
 	temp, err := os.Create(fname)
 	require.NoError(t, err)
 	os.Stdout = temp
@@ -31,35 +34,40 @@ func Test_Main(t *testing.T) {
 }
 
 func TestConvertParseProfilesError(t *testing.T) {
+	t.Parallel()
+
 	pipe2rd, pipe2wr := io.Pipe()
-	defer func() {
-		err := pipe2rd.Close()
-		require.NoError(t, err)
-		err = pipe2wr.Close()
-		require.NoError(t, err)
-	}()
+	defer pipe2rd.Close()
+	defer pipe2wr.Close()
+
 	err := convert(strings.NewReader("invalid data"), pipe2wr, &Ignore{}, "")
-	require.Error(t, err)
-	require.Equal(t, "bad mode line: invalid data", err.Error())
+	require.ErrorContains(t, err, "bad mode line: invalid data")
 }
 
 func TestConvertOutputError(t *testing.T) {
+	t.Parallel()
+
 	pipe2rd, pipe2wr := io.Pipe()
-	err := pipe2wr.Close()
-	require.NoError(t, err)
-	defer func() { err := pipe2rd.Close(); require.NoError(t, err) }()
-	err = convert(strings.NewReader("mode: set"), pipe2wr, &Ignore{}, "")
-	require.Error(t, err)
-	require.Equal(t, "io: read/write on closed pipe", err.Error())
+	defer pipe2rd.Close()
+	require.NoError(t, pipe2wr.Close())
+
+	err := convert(strings.NewReader("mode: set"), pipe2wr, &Ignore{}, "")
+	require.ErrorIs(t, err, io.ErrClosedPipe)
 }
 
 func TestConvertEmpty(t *testing.T) {
+	t.Parallel()
+
 	data := `mode: set`
 
 	pipe2rd, pipe2wr := io.Pipe()
-	go func() {
-		err := convert(strings.NewReader(data), pipe2wr, &Ignore{}, "")
-		require.NoError(t, err)
+	var eg errgroup.Group
+	eg.Go(func() error {
+		return convert(strings.NewReader(data), pipe2wr, &Ignore{}, "")
+	})
+	defer func() {
+		require.NoError(t, pipe2rd.Close())
+		require.NoError(t, eg.Wait())
 	}()
 
 	v := Coverage{}
@@ -73,6 +81,8 @@ func TestConvertEmpty(t *testing.T) {
 }
 
 func TestParseProfileNilPackages(t *testing.T) {
+	t.Parallel()
+
 	v := Coverage{}
 	profile := Profile{FileName: "does-not-exist"}
 	err := v.parseProfile(&profile, nil, &Ignore{})
@@ -81,6 +91,8 @@ func TestParseProfileNilPackages(t *testing.T) {
 }
 
 func TestParseProfileEmptyPackages(t *testing.T) {
+	t.Parallel()
+
 	v := Coverage{}
 	profile := Profile{FileName: "does-not-exist"}
 	err := v.parseProfile(&profile, &packages.Package{}, &Ignore{})
@@ -89,6 +101,8 @@ func TestParseProfileEmptyPackages(t *testing.T) {
 }
 
 func TestParseProfileDoesNotExist(t *testing.T) {
+	t.Parallel()
+
 	v := Coverage{}
 	profile := Profile{FileName: "does-not-exist"}
 
@@ -108,6 +122,8 @@ func TestParseProfileDoesNotExist(t *testing.T) {
 }
 
 func TestParseProfileNotReadable(t *testing.T) {
+	t.Parallel()
+
 	v := Coverage{}
 	profile := Profile{FileName: os.DevNull}
 	err := v.parseProfile(&profile, nil, &Ignore{})
@@ -116,15 +132,16 @@ func TestParseProfileNotReadable(t *testing.T) {
 }
 
 func TestParseProfilePermissionDenied(t *testing.T) {
+	t.Parallel()
+
 	if runtime.GOOS == "windows" {
 		t.Skip("chmod is not supported by Windows")
 	}
 
-	tempFile, err := os.CreateTemp("", "not-readable")
+	tempFile, err := os.CreateTemp(t.TempDir(), "not-readable")
 	require.NoError(t, err)
 
-	defer func() { err := os.Remove(tempFile.Name()); require.NoError(t, err) }()
-	err = tempFile.Chmod(000)
+	err = tempFile.Chmod(0o000)
 	require.NoError(t, err)
 	v := Coverage{}
 	profile := Profile{FileName: tempFile.Name()}
@@ -142,6 +159,8 @@ func TestParseProfilePermissionDenied(t *testing.T) {
 }
 
 func TestConvertSetMode(t *testing.T) {
+	t.Parallel()
+
 	pipe1rd, err := os.Open("testdata/testdata_set.txt")
 	require.NoError(t, err)
 
@@ -157,14 +176,16 @@ func TestConvertSetMode(t *testing.T) {
 		convwr = io.MultiWriter(convwr, testwr)
 	}
 
-	go func() {
-		err := convert(pipe1rd, convwr, &Ignore{
+	var eg errgroup.Group
+	eg.Go(func() error {
+		return convert(pipe1rd, convwr, &Ignore{
 			GeneratedFiles: true,
 			Files:          regexp.MustCompile(`[\\/]func[45]\.go$`),
 		}, "testdata")
-		if err != nil {
-			panic(err)
-		}
+	})
+	defer func() {
+		require.NoError(t, pipe2rd.Close())
+		require.NoError(t, eg.Wait())
 	}()
 
 	v := Coverage{}
@@ -194,32 +215,23 @@ func TestConvertSetMode(t *testing.T) {
 	require.NotNil(t, c.Lines)
 	require.Len(t, c.Lines, 4)
 
-	var l *Line
-	if l = m.Lines[0]; l.Number != 5 || l.Hits != 1 {
-		t.Errorf("unmatched line: Number:%d, Hits:%d", l.Number, l.Hits)
-	}
-	if l = m.Lines[1]; l.Number != 6 || l.Hits != 0 {
-		t.Errorf("unmatched line: Number:%d, Hits:%d", l.Number, l.Hits)
-	}
-	if l = m.Lines[2]; l.Number != 7 || l.Hits != 0 {
-		t.Errorf("unmatched line: Number:%d, Hits:%d", l.Number, l.Hits)
-	}
-	if l = m.Lines[3]; l.Number != 8 || l.Hits != 0 {
-		t.Errorf("unmatched line: Number:%d, Hits:%d", l.Number, l.Hits)
-	}
+	require.Equal(t, 5, m.Lines[0].Number)
+	require.Equal(t, int64(1), m.Lines[0].Hits)
+	require.Equal(t, 6, m.Lines[1].Number)
+	require.Equal(t, int64(0), m.Lines[1].Hits)
+	require.Equal(t, 7, m.Lines[2].Number)
+	require.Equal(t, int64(0), m.Lines[2].Hits)
+	require.Equal(t, 8, m.Lines[3].Number)
+	require.Equal(t, int64(0), m.Lines[3].Hits)
 
-	if l = c.Lines[0]; l.Number != 5 || l.Hits != 1 {
-		t.Errorf("unmatched line: Number:%d, Hits:%d", l.Number, l.Hits)
-	}
-	if l = c.Lines[1]; l.Number != 6 || l.Hits != 0 {
-		t.Errorf("unmatched line: Number:%d, Hits:%d", l.Number, l.Hits)
-	}
-	if l = c.Lines[2]; l.Number != 7 || l.Hits != 0 {
-		t.Errorf("unmatched line: Number:%d, Hits:%d", l.Number, l.Hits)
-	}
-	if l = c.Lines[3]; l.Number != 8 || l.Hits != 0 {
-		t.Errorf("unmatched line: Number:%d, Hits:%d", l.Number, l.Hits)
-	}
+	require.Equal(t, 5, c.Lines[0].Number)
+	require.Equal(t, int64(1), c.Lines[0].Hits)
+	require.Equal(t, 6, c.Lines[1].Number)
+	require.Equal(t, int64(0), c.Lines[1].Hits)
+	require.Equal(t, 7, c.Lines[2].Number)
+	require.Equal(t, int64(0), c.Lines[2].Hits)
+	require.Equal(t, 8, c.Lines[3].Number)
+	require.Equal(t, int64(0), c.Lines[3].Hits)
 
 	c = p.Classes[1]
 	require.Equal(t, "Type1", c.Name)

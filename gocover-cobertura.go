@@ -1,7 +1,13 @@
+// gocover-cobertura converts Go code coverage profiles to Cobertura XML format.
+//
+// It reads from standard input and writes to standard output.
+// It can be used to generate code coverage reports compatible with tools that
+// expect Cobertura format, such as SonarQube or Jenkins.
 package main
 
 import (
 	"encoding/xml"
+	"errors"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -101,7 +107,7 @@ func getPackages(profiles []*Profile, buildTags string) ([]*packages.Package, er
 	for _, profile := range profiles {
 		pkgNames = append(pkgNames, getPackageName(profile.FileName))
 	}
-	buildTags = fmt.Sprintf("-tags=%s", buildTags)
+	buildTags = "-tags=" + buildTags
 	cfg := &packages.Config{
 		Mode:       packages.NeedFiles | packages.NeedModule,
 		BuildFlags: []string{buildTags},
@@ -153,7 +159,7 @@ func (cov *Coverage) parseProfiles(profiles []*Profile, pkgMap map[string]*packa
 
 func (cov *Coverage) parseProfile(profile *Profile, pkgPkg *packages.Package, ignore *Ignore) error {
 	if pkgPkg == nil || pkgPkg.Module == nil {
-		return fmt.Errorf("package required when using go modules")
+		return errors.New("package required when using go modules")
 	}
 	fileName := profile.FileName[len(pkgPkg.Module.Path)+1:]
 	log.Printf("Parsing file: %s", fileName)
@@ -262,8 +268,8 @@ func (v *fileVisitor) class(n *ast.FuncDecl) *Class {
 		// the file path.
 		//
 		// src/lib/util/foo.go -> src.lib.util.foo.go
-		className = strings.Replace(v.fileName, "/", ".", -1)
-		className = strings.Replace(className, "\\", ".", -1)
+		className = strings.ReplaceAll(v.fileName, "/", ".")
+		className = strings.ReplaceAll(className, "\\", ".")
 	} else {
 		className = v.recvName(n)
 	}
