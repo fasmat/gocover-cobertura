@@ -35,14 +35,14 @@ func main() {
 	if *ignoreDirsRe != "" {
 		ignore.Dirs, err = regexp.Compile(*ignoreDirsRe)
 		if err != nil {
-			log.Fatalf("Bad -ignore-dirs regexp: %s\n", err)
+			log.Fatalf("Bad -ignore-dirs regexp: %s", err)
 		}
 	}
 
 	if *ignoreFilesRe != "" {
 		ignore.Files, err = regexp.Compile(*ignoreFilesRe)
 		if err != nil {
-			log.Fatalf("Bad -ignore-files regexp: %s\n", err)
+			log.Fatalf("Bad -ignore-files regexp: %s", err)
 		}
 	}
 
@@ -136,8 +136,10 @@ func findAbsFilePath(pkg *packages.Package, profileName string) string {
 func (cov *Coverage) parseProfiles(profiles []*Profile, pkgMap map[string]*packages.Package, ignore *Ignore) error {
 	cov.Packages = []*Package{}
 	for _, profile := range profiles {
+		log.Printf("Processing profile for file: %s", profile.FileName)
 		pkgName := getPackageName(profile.FileName)
 		pkgPkg := pkgMap[pkgName]
+		log.Printf("Package: %s, %s", pkgName, pkgPkg)
 		if err := cov.parseProfile(profile, pkgPkg, ignore); err != nil {
 			return err
 		}
@@ -153,6 +155,7 @@ func (cov *Coverage) parseProfile(profile *Profile, pkgPkg *packages.Package, ig
 		return fmt.Errorf("package required when using go modules")
 	}
 	fileName := profile.FileName[len(pkgPkg.Module.Path)+1:]
+	log.Printf("Parsing file: %s", fileName)
 	absFilePath := findAbsFilePath(pkgPkg, profile.FileName)
 	fset := token.NewFileSet()
 	parsed, err := parser.ParseFile(fset, absFilePath, nil, 0)
@@ -172,7 +175,7 @@ func (cov *Coverage) parseProfile(profile *Profile, pkgPkg *packages.Package, ig
 	pkgPath = strings.TrimRight(strings.TrimRight(pkgPath, "/"), "\\")
 	pkgPath = filepath.Join(pkgPkg.Module.Path, pkgPath)
 	// TODO(boumenot): package paths are not file paths, there is a consistent separator
-	pkgPath = strings.Replace(pkgPath, "\\", "/", -1)
+	pkgPath = strings.ReplaceAll(pkgPath, "\\", "/", )
 
 	var pkg *Package
 	for _, p := range cov.Packages {
