@@ -1,4 +1,5 @@
-// +build testdata
+//go:build testdata
+
 package testdata
 
 type Type1 struct {

@@ -1,4 +1,5 @@
-// +build testdata
+//go:build testdata
+
 package testdata
 
 // Code generated for tests; DO NOT EDIT.

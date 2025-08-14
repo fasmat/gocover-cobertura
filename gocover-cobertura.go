@@ -8,6 +8,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -21,11 +22,6 @@ const coberturaDTDDecl = `<!DOCTYPE coverage SYSTEM "http://cobertura.sourceforg
 
 var byFiles bool
 
-func fatal(format string, a ...interface{}) {
-	_, _ = fmt.Fprintf(os.Stderr, format, a...)
-	os.Exit(1)
-}
-
 func main() {
 	var ignore Ignore
 
@@ -33,36 +29,35 @@ func main() {
 	flag.BoolVar(&ignore.GeneratedFiles, "ignore-gen-files", false, "ignore generated files")
 	ignoreDirsRe := flag.String("ignore-dirs", "", "ignore dirs matching this regexp")
 	ignoreFilesRe := flag.String("ignore-files", "", "ignore files matching this regexp")
-
-	flag.Parse()
+	buildTags := flag.String("build-tags", "", "build tags to use when loading packages")
 
 	var err error
 	if *ignoreDirsRe != "" {
 		ignore.Dirs, err = regexp.Compile(*ignoreDirsRe)
 		if err != nil {
-			fatal("Bad -ignore-dirs regexp: %s\n", err)
+			log.Fatalf("Bad -ignore-dirs regexp: %s\n", err)
 		}
 	}
 
 	if *ignoreFilesRe != "" {
 		ignore.Files, err = regexp.Compile(*ignoreFilesRe)
 		if err != nil {
-			fatal("Bad -ignore-files regexp: %s\n", err)
+			log.Fatalf("Bad -ignore-files regexp: %s\n", err)
 		}
 	}
 
-	if err := convert(os.Stdin, os.Stdout, &ignore); err != nil {
-		fatal("code coverage conversion failed: %s", err)
+	if err := convert(os.Stdin, os.Stdout, &ignore, *buildTags); err != nil {
+		log.Fatalf("code coverage conversion failed: %s", err)
 	}
 }
 
-func convert(in io.Reader, out io.Writer, ignore *Ignore) error {
+func convert(in io.Reader, out io.Writer, ignore *Ignore, buildTags string) error {
 	profiles, err := ParseProfiles(in, ignore)
 	if err != nil {
 		return err
 	}
 
-	pkgs, err := getPackages(profiles)
+	pkgs, err := getPackages(profiles, buildTags)
 	if err != nil {
 		return err
 	}
@@ -92,7 +87,7 @@ func convert(in io.Reader, out io.Writer, ignore *Ignore) error {
 	return nil
 }
 
-func getPackages(profiles []*Profile) ([]*packages.Package, error) {
+func getPackages(profiles []*Profile, buildTags string) ([]*packages.Package, error) {
 	if len(profiles) == 0 {
 		return []*packages.Package{}, nil
 	}
@@ -101,7 +96,12 @@ func getPackages(profiles []*Profile) ([]*packages.Package, error) {
 	for _, profile := range profiles {
 		pkgNames = append(pkgNames, getPackageName(profile.FileName))
 	}
-	return packages.Load(&packages.Config{Mode: packages.NeedFiles | packages.NeedModule}, pkgNames...)
+	buildTags = fmt.Sprintf("-tags=%s", buildTags)
+	cfg := &packages.Config{
+		Mode:       packages.NeedFiles | packages.NeedModule,
+		BuildFlags: []string{buildTags},
+	}
+	return packages.Load(cfg, pkgNames...)
 }
 
 func appendIfUnique(sources []*Source, dir string) []*Source {
@@ -116,7 +116,7 @@ func appendIfUnique(sources []*Source, dir string) []*Source {
 func getPackageName(filename string) string {
 	pkgName, _ := filepath.Split(filename)
 	// TODO(boumenot): Windows vs. Linux
-	return strings.TrimRight(strings.TrimRight(pkgName, "\\"), "/")
+	return strings.TrimRight(pkgName, string(os.PathSeparator))
 }
 
 func findAbsFilePath(pkg *packages.Package, profileName string) string {
