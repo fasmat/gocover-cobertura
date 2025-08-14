@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/xml"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,16 +16,20 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-var SaveTestResults = false
-
 func Test_Main(t *testing.T) {
 	t.Parallel()
 
 	fname := filepath.Join(t.TempDir(), "stdout")
 	temp, err := os.Create(fname)
 	require.NoError(t, err)
+	stdout := os.Stdout
+	defer func() {
+		os.Stdout = stdout
+	}()
 	os.Stdout = temp
 	main()
+	os.Stdout = stdout
+	require.NoError(t, temp.Close())
 	outputBytes, err := os.ReadFile(fname)
 	require.NoError(t, err)
 
@@ -61,12 +66,14 @@ func TestConvertEmpty(t *testing.T) {
 	data := `mode: set`
 
 	pipe2rd, pipe2wr := io.Pipe()
+	defer pipe2rd.Close()
+	defer pipe2wr.Close()
+
 	var eg errgroup.Group
 	eg.Go(func() error {
 		return convert(strings.NewReader(data), pipe2wr, &Ignore{}, "")
 	})
 	defer func() {
-		require.NoError(t, pipe2rd.Close())
 		require.NoError(t, eg.Wait())
 	}()
 
@@ -78,6 +85,7 @@ func TestConvertEmpty(t *testing.T) {
 	require.Equal(t, "coverage", v.XMLName.Local)
 	require.Nil(t, v.Sources)
 	require.Nil(t, v.Packages)
+	require.NoError(t, pipe2rd.Close())
 }
 
 func TestParseProfileNilPackages(t *testing.T) {
@@ -112,13 +120,8 @@ func TestParseProfileDoesNotExist(t *testing.T) {
 	}
 
 	err := v.parseProfile(&profile, &pkg, &Ignore{})
-	require.Error(t, err)
-
-	// Windows vs. Linux
-	if !strings.Contains(err.Error(), "system cannot find the file specified") &&
-		!strings.Contains(err.Error(), "no such file or directory") {
-		t.Error(err.Error())
-	}
+	pathErr := &fs.PathError{}
+	require.ErrorAs(t, err, &pathErr)
 }
 
 func TestParseProfileNotReadable(t *testing.T) {
@@ -161,30 +164,22 @@ func TestParseProfilePermissionDenied(t *testing.T) {
 func TestConvertSetMode(t *testing.T) {
 	t.Parallel()
 
-	pipe1rd, err := os.Open("testdata/testdata_set.txt")
+	src, err := os.Open("testdata/testdata_set.txt")
 	require.NoError(t, err)
+	defer src.Close()
 
 	pipe2rd, pipe2wr := io.Pipe()
-
-	var convwr io.Writer = pipe2wr
-	if SaveTestResults {
-		testwr, err := os.Create("testdata/testdata_set.xml")
-		if err != nil {
-			t.Fatal("Can't open output testdata.", err)
-		}
-		defer func() { err := testwr.Close(); require.NoError(t, err) }()
-		convwr = io.MultiWriter(convwr, testwr)
-	}
+	defer pipe2rd.Close()
+	defer pipe2wr.Close()
 
 	var eg errgroup.Group
 	eg.Go(func() error {
-		return convert(pipe1rd, convwr, &Ignore{
+		return convert(src, pipe2wr, &Ignore{
 			GeneratedFiles: true,
 			Files:          regexp.MustCompile(`[\\/]func[45]\.go$`),
 		}, "testdata")
 	})
 	defer func() {
-		require.NoError(t, pipe2rd.Close())
 		require.NoError(t, eg.Wait())
 	}()
 
@@ -192,6 +187,8 @@ func TestConvertSetMode(t *testing.T) {
 	dec := xml.NewDecoder(pipe2rd)
 	err = dec.Decode(&v)
 	require.NoError(t, err)
+
+	require.NoError(t, pipe2rd.Close())
 
 	require.Equal(t, "coverage", v.XMLName.Local)
 	require.Len(t, v.Sources, 1)

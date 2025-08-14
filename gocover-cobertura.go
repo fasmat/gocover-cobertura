@@ -127,7 +127,7 @@ func appendIfUnique(sources []*Source, dir string) []*Source {
 func getPackageName(filename string) string {
 	pkgName, _ := filepath.Split(filename)
 	// TODO(boumenot): Windows vs. Linux
-	return strings.TrimRight(pkgName, string(os.PathSeparator))
+	return strings.TrimRight(strings.TrimRight(pkgName, "\\"), "/")
 }
 
 func findAbsFilePath(pkg *packages.Package, profileName string) string {
@@ -143,10 +143,8 @@ func findAbsFilePath(pkg *packages.Package, profileName string) string {
 func (cov *Coverage) parseProfiles(profiles []*Profile, pkgMap map[string]*packages.Package, ignore *Ignore) error {
 	cov.Packages = []*Package{}
 	for _, profile := range profiles {
-		log.Printf("Processing profile for file: %s", profile.FileName)
 		pkgName := getPackageName(profile.FileName)
 		pkgPkg := pkgMap[pkgName]
-		log.Printf("Package: %s, %s", pkgName, pkgPkg)
 		if err := cov.parseProfile(profile, pkgPkg, ignore); err != nil {
 			return err
 		}
@@ -162,7 +160,6 @@ func (cov *Coverage) parseProfile(profile *Profile, pkgPkg *packages.Package, ig
 		return errors.New("package required when using go modules")
 	}
 	fileName := profile.FileName[len(pkgPkg.Module.Path)+1:]
-	log.Printf("Parsing file: %s", fileName)
 	absFilePath := findAbsFilePath(pkgPkg, profile.FileName)
 	fset := token.NewFileSet()
 	parsed, err := parser.ParseFile(fset, absFilePath, nil, 0)
