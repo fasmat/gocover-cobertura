@@ -63,7 +63,7 @@ func main() {
 }
 
 func convert(in io.Reader, out io.Writer, ignore *Ignore, buildTags string) error {
-	profiles, err := ParseProfiles(in, ignore)
+	profiles, err := ParseProfilesFromReader(in, ignore)
 	if err != nil {
 		return fmt.Errorf("parse profiles: %w", err)
 	}
