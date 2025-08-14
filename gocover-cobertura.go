@@ -46,6 +46,10 @@ func main() {
 		}
 	}
 
+	if *buildTags != "" {
+		log.Printf("Using build tags: %s", *buildTags)
+	}
+
 	if err := convert(os.Stdin, os.Stdout, &ignore, *buildTags); err != nil {
 		log.Fatalf("code coverage conversion failed: %s", err)
 	}
@@ -54,12 +58,12 @@ func main() {
 func convert(in io.Reader, out io.Writer, ignore *Ignore, buildTags string) error {
 	profiles, err := ParseProfiles(in, ignore)
 	if err != nil {
-		return err
+		return fmt.Errorf("parse profiles: %w", err)
 	}
 
 	pkgs, err := getPackages(profiles, buildTags)
 	if err != nil {
-		return err
+		return fmt.Errorf("get packages: %w", err)
 	}
 
 	sources := make([]*Source, 0)
@@ -71,19 +75,19 @@ func convert(in io.Reader, out io.Writer, ignore *Ignore, buildTags string) erro
 
 	coverage := Coverage{Sources: sources, Packages: nil, Timestamp: time.Now().UnixNano() / int64(time.Millisecond)}
 	if err := coverage.parseProfiles(profiles, pkgMap, ignore); err != nil {
-		return err
+		return fmt.Errorf("parse coverage profiles: %w", err)
 	}
 
-	_, _ = fmt.Fprint(out, xml.Header)
-	_, _ = fmt.Fprintln(out, coberturaDTDDecl)
+	fmt.Fprint(out, xml.Header)
+	fmt.Fprintln(out, coberturaDTDDecl)
 
 	encoder := xml.NewEncoder(out)
 	encoder.Indent("", "  ")
 	if err := encoder.Encode(coverage); err != nil {
-		return err
+		return fmt.Errorf("encode coverage: %w", err)
 	}
 
-	_, _ = fmt.Fprintln(out)
+	fmt.Fprintln(out)
 	return nil
 }
 
