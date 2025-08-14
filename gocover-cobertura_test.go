@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/xml"
+	"errors"
 	"io"
 	"io/fs"
 	"os"
@@ -11,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/tools/go/packages"
 )
@@ -21,21 +21,34 @@ func Test_Main(t *testing.T) {
 
 	fname := filepath.Join(t.TempDir(), "stdout")
 	temp, err := os.Create(fname)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+
 	stdout := os.Stdout
 	defer func() {
 		os.Stdout = stdout
 	}()
+
 	os.Stdout = temp
 	main()
 	os.Stdout = stdout
-	require.NoError(t, temp.Close())
+
+	if err := temp.Close(); err != nil {
+		t.Fatalf("failed to close temp file: %v", err)
+	}
 	outputBytes, err := os.ReadFile(fname)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("failed to read temp file: %v", err)
+	}
 
 	outputString := string(outputBytes)
-	require.Contains(t, outputString, xml.Header)
-	require.Contains(t, outputString, coberturaDTDDecl)
+	if !strings.Contains(outputString, xml.Header) {
+		t.Errorf("missing XML header")
+	}
+	if !strings.Contains(outputString, coberturaDTDDecl) {
+		t.Errorf("missing DTDDecl")
+	}
 }
 
 func TestConvertParseProfilesError(t *testing.T) {
@@ -46,7 +59,9 @@ func TestConvertParseProfilesError(t *testing.T) {
 	defer pipe2wr.Close()
 
 	err := convert(strings.NewReader("invalid data"), pipe2wr, &Ignore{}, "")
-	require.ErrorContains(t, err, "bad mode line: invalid data")
+	if err == nil || !strings.Contains(err.Error(), "bad mode line: invalid data") {
+		t.Fatalf("expected error about bad mode line, got: %v", err)
+	}
 }
 
 func TestConvertOutputError(t *testing.T) {
@@ -54,10 +69,14 @@ func TestConvertOutputError(t *testing.T) {
 
 	pipe2rd, pipe2wr := io.Pipe()
 	defer pipe2rd.Close()
-	require.NoError(t, pipe2wr.Close())
+	if err := pipe2rd.Close(); err != nil {
+		t.Fatalf("failed to close pipe2rd: %v", err)
+	}
 
 	err := convert(strings.NewReader("mode: set"), pipe2wr, &Ignore{}, "")
-	require.ErrorIs(t, err, io.ErrClosedPipe)
+	if !errors.Is(err, io.ErrClosedPipe) {
+		t.Fatalf("expected error about closed pipe, got: %v", err)
+	}
 }
 
 func TestConvertEmpty(t *testing.T) {
@@ -74,18 +93,30 @@ func TestConvertEmpty(t *testing.T) {
 		return convert(strings.NewReader(data), pipe2wr, &Ignore{}, "")
 	})
 	defer func() {
-		require.NoError(t, eg.Wait())
+		if err := eg.Wait(); err != nil {
+			t.Fatalf("error during conversion: %v", err)
+		}
 	}()
 
 	v := Coverage{}
 	dec := xml.NewDecoder(pipe2rd)
 	err := dec.Decode(&v)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("failed to decode XML: %v", err)
+	}
 
-	require.Equal(t, "coverage", v.XMLName.Local)
-	require.Nil(t, v.Sources)
-	require.Nil(t, v.Packages)
-	require.NoError(t, pipe2rd.Close())
+	if v.XMLName.Local != "coverage" {
+		t.Errorf("expected XML name 'coverage', got '%s'", v.XMLName.Local)
+	}
+	if len(v.Sources) != 0 {
+		t.Errorf("expected no sources, got %d", len(v.Sources))
+	}
+	if len(v.Packages) != 0 {
+		t.Errorf("expected no packages, got %d", len(v.Packages))
+	}
+	if err := pipe2rd.Close(); err != nil {
+		t.Fatalf("failed to close pipe2rd: %v", err)
+	}
 }
 
 func TestParseProfileNilPackages(t *testing.T) {
@@ -94,8 +125,9 @@ func TestParseProfileNilPackages(t *testing.T) {
 	v := Coverage{}
 	profile := Profile{FileName: "does-not-exist"}
 	err := v.parseProfile(&profile, nil, &Ignore{})
-	require.Error(t, err)
-	require.Contains(t, `package required when using go modules`, err.Error())
+	if err == nil || !strings.Contains(err.Error(), "package required when using go modules") {
+		t.Fatalf("expected error about missing package, got: %v", err)
+	}
 }
 
 func TestParseProfileEmptyPackages(t *testing.T) {
@@ -104,8 +136,9 @@ func TestParseProfileEmptyPackages(t *testing.T) {
 	v := Coverage{}
 	profile := Profile{FileName: "does-not-exist"}
 	err := v.parseProfile(&profile, &packages.Package{}, &Ignore{})
-	require.Error(t, err)
-	require.Contains(t, `package required when using go modules`, err.Error())
+	if err == nil || !strings.Contains(err.Error(), "package required when using go modules") {
+		t.Fatalf("expected error about missing package, got: %v", err)
+	}
 }
 
 func TestParseProfileDoesNotExist(t *testing.T) {
@@ -120,8 +153,9 @@ func TestParseProfileDoesNotExist(t *testing.T) {
 	}
 
 	err := v.parseProfile(&profile, &pkg, &Ignore{})
-	pathErr := &fs.PathError{}
-	require.ErrorAs(t, err, &pathErr)
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("expected error about file not existing, got: %v", err)
+	}
 }
 
 func TestParseProfileNotReadable(t *testing.T) {
@@ -130,8 +164,9 @@ func TestParseProfileNotReadable(t *testing.T) {
 	v := Coverage{}
 	profile := Profile{FileName: os.DevNull}
 	err := v.parseProfile(&profile, nil, &Ignore{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "package required when using go modules")
+	if err == nil || !strings.Contains(err.Error(), "package required when using go modules") {
+		t.Fatalf("expected error about missing package, got: %v", err)
+	}
 }
 
 func TestParseProfilePermissionDenied(t *testing.T) {
@@ -142,10 +177,14 @@ func TestParseProfilePermissionDenied(t *testing.T) {
 	}
 
 	tempFile, err := os.CreateTemp(t.TempDir(), "not-readable")
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
 
 	err = tempFile.Chmod(0o000)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("failed to change file permissions: %v", err)
+	}
 	v := Coverage{}
 	profile := Profile{FileName: tempFile.Name()}
 	pkg := packages.Package{
@@ -157,15 +196,18 @@ func TestParseProfilePermissionDenied(t *testing.T) {
 		},
 	}
 	err = v.parseProfile(&profile, &pkg, &Ignore{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "permission denied")
+	if !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("expected permission denied error, got: %v", err)
+	}
 }
 
 func TestConvertSetMode(t *testing.T) {
 	t.Parallel()
 
 	src, err := os.Open("testdata/testdata_set.txt")
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("failed to open testdata_set.txt: %v", err)
+	}
 	defer src.Close()
 
 	pipe2rd, pipe2wr := io.Pipe()
@@ -180,59 +222,118 @@ func TestConvertSetMode(t *testing.T) {
 		}, "testdata")
 	})
 	defer func() {
-		require.NoError(t, eg.Wait())
+		if err := eg.Wait(); err != nil {
+			t.Fatalf("error during conversion: %v", err)
+		}
 	}()
 
 	v := Coverage{}
 	dec := xml.NewDecoder(pipe2rd)
 	err = dec.Decode(&v)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("failed to decode XML: %v", err)
+	}
 
-	require.NoError(t, pipe2rd.Close())
+	if err := pipe2rd.Close(); err != nil {
+		t.Fatalf("failed to close pipe2rd: %v", err)
+	}
 
-	require.Equal(t, "coverage", v.XMLName.Local)
-	require.Len(t, v.Sources, 1)
-	require.Len(t, v.Packages, 1)
-
+	assertCoverage(t, v)
 	p := v.Packages[0]
-	require.Equal(t, "github.com/fasmat/gocover-cobertura/testdata", strings.TrimRight(p.Name, "/"))
-	require.NotNil(t, p.Classes)
-	require.Len(t, p.Classes, 2)
-
+	assertPackage(t, p)
 	c := p.Classes[0]
-	require.Equal(t, "-", c.Name)
-	require.Equal(t, "testdata/func1.go", c.Filename)
-	require.NotNil(t, c.Methods)
-	require.Len(t, c.Methods, 1)
-	require.NotNil(t, c.Lines)
-	require.Len(t, c.Lines, 4)
-
+	assertClass(t, c)
 	m := c.Methods[0]
-	require.Equal(t, "Func1", m.Name)
-	require.NotNil(t, c.Lines)
-	require.Len(t, c.Lines, 4)
-
-	require.Equal(t, 5, m.Lines[0].Number)
-	require.Equal(t, int64(1), m.Lines[0].Hits)
-	require.Equal(t, 6, m.Lines[1].Number)
-	require.Equal(t, int64(0), m.Lines[1].Hits)
-	require.Equal(t, 7, m.Lines[2].Number)
-	require.Equal(t, int64(0), m.Lines[2].Hits)
-	require.Equal(t, 8, m.Lines[3].Number)
-	require.Equal(t, int64(0), m.Lines[3].Hits)
-
-	require.Equal(t, 5, c.Lines[0].Number)
-	require.Equal(t, int64(1), c.Lines[0].Hits)
-	require.Equal(t, 6, c.Lines[1].Number)
-	require.Equal(t, int64(0), c.Lines[1].Hits)
-	require.Equal(t, 7, c.Lines[2].Number)
-	require.Equal(t, int64(0), c.Lines[2].Hits)
-	require.Equal(t, 8, c.Lines[3].Number)
-	require.Equal(t, int64(0), c.Lines[3].Hits)
+	assertMethod(t, m)
 
 	c = p.Classes[1]
-	require.Equal(t, "Type1", c.Name)
-	require.Equal(t, "testdata/func2.go", c.Filename)
-	require.NotNil(t, c.Methods)
-	require.Len(t, c.Methods, 3)
+	if c.Name != "Type1" {
+		t.Errorf("expected class name 'Type1', got '%s'", c.Name)
+	}
+	if c.Filename != "testdata/func2.go" {
+		t.Errorf("expected class filename 'testdata/func2.go', got '%s'", c.Filename)
+	}
+	if len(c.Methods) != 3 {
+		t.Fatalf("expected 3 methods, got %d", len(c.Methods))
+	}
+}
+
+func assertMethod(t *testing.T, m *Method) {
+	t.Helper()
+
+	if m.Name != "Func1" {
+		t.Errorf("expected method name 'Func1', got '%s'", m.Name)
+	}
+	if len(m.Lines) != 4 {
+		t.Fatalf("expected 4 lines in method, got %d", len(m.Lines))
+	}
+
+	if m.Lines[0].Number != 5 || m.Lines[0].Hits != 1 {
+		t.Errorf("expected line 5 with 1 hit, got %d hits", m.Lines[0].Hits)
+	}
+	if m.Lines[1].Number != 6 || m.Lines[1].Hits != 0 {
+		t.Errorf("expected line 6 with 0 hits, got %d hits", m.Lines[1].Hits)
+	}
+	if m.Lines[2].Number != 7 || m.Lines[2].Hits != 0 {
+		t.Errorf("expected line 7 with 0 hits, got %d hits", m.Lines[2].Hits)
+	}
+	if m.Lines[3].Number != 8 || m.Lines[3].Hits != 0 {
+		t.Errorf("expected line 8 with 0 hits, got %d hits", m.Lines[3].Hits)
+	}
+}
+
+func assertClass(t *testing.T, c *Class) {
+	t.Helper()
+
+	if c.Name != "-" {
+		t.Errorf("expected class name '-', got '%s'", c.Name)
+	}
+	if c.Filename != "testdata/func1.go" {
+		t.Errorf("expected class filename 'testdata/func1.go', got '%s'", c.Filename)
+	}
+	if len(c.Methods) != 1 {
+		t.Fatalf("expected 1 method, got %d", len(c.Methods))
+	}
+	if len(c.Lines) != 4 {
+		t.Fatalf("expected 4 lines, got %d", len(c.Lines))
+	}
+	if c.Lines[0].Number != 5 || c.Lines[0].Hits != 1 {
+		t.Errorf("expected line 5 with 1 hit, got %d hits", c.Lines[0].Hits)
+	}
+	if c.Lines[1].Number != 6 || c.Lines[1].Hits != 0 {
+		t.Errorf("expected line 6 with 0 hits, got %d hits", c.Lines[1].Hits)
+	}
+	if c.Lines[2].Number != 7 || c.Lines[2].Hits != 0 {
+		t.Errorf("expected line 7 with 0 hits, got %d hits", c.Lines[2].Hits)
+	}
+	if c.Lines[3].Number != 8 || c.Lines[3].Hits != 0 {
+		t.Errorf("expected line 8 with 0 hits, got %d hits", c.Lines[3].Hits)
+	}
+}
+
+func assertPackage(t *testing.T, p *Package) {
+	t.Helper()
+
+	if p.Name != "github.com/fasmat/gocover-cobertura/testdata" {
+		t.Errorf("expected package name 'github.com/fasmat/gocover-cobertura/testdata', got '%s'", p.Name)
+	}
+
+	if len(p.Classes) != 2 {
+		t.Fatalf("expected 2 classes, got %d", len(p.Classes))
+	}
+}
+
+func assertCoverage(t *testing.T, v Coverage) {
+	t.Helper()
+
+	if v.XMLName.Local != "coverage" {
+		t.Errorf("expected XML name 'coverage', got '%s'", v.XMLName.Local)
+	}
+	if len(v.Sources) != 1 {
+		t.Errorf("expected 1 source, got %d", len(v.Sources))
+	}
+
+	if len(v.Packages) != 1 {
+		t.Fatalf("expected 1 package, got %d", len(v.Packages))
+	}
 }
