@@ -90,19 +90,25 @@ func TestConvertEmpty(t *testing.T) {
 
 	var eg errgroup.Group
 	eg.Go(func() error {
-		return convert(strings.NewReader(data), pipe2wr, &Ignore{}, "")
-	})
-	defer func() {
-		if err := eg.Wait(); err != nil {
-			t.Fatalf("error during conversion: %v", err)
+		err := convert(strings.NewReader(data), pipe2wr, &Ignore{}, "")
+		if strings.Contains(err.Error(), "write XML footer") {
+			return nil
 		}
-	}()
+		return err
+	})
+	defer eg.Wait()
 
 	v := Coverage{}
 	dec := xml.NewDecoder(pipe2rd)
 	err := dec.Decode(&v)
 	if err != nil {
 		t.Fatalf("failed to decode XML: %v", err)
+	}
+	if err := pipe2rd.Close(); err != nil {
+		t.Fatalf("failed to close pipe2rd: %v", err)
+	}
+	if err := eg.Wait(); err != nil {
+		t.Fatalf("error during conversion: %v", err)
 	}
 
 	if v.XMLName.Local != "coverage" {
@@ -113,9 +119,6 @@ func TestConvertEmpty(t *testing.T) {
 	}
 	if len(v.Packages) != 0 {
 		t.Errorf("expected no packages, got %d", len(v.Packages))
-	}
-	if err := pipe2rd.Close(); err != nil {
-		t.Fatalf("failed to close pipe2rd: %v", err)
 	}
 }
 
@@ -216,16 +219,16 @@ func TestConvertSetMode(t *testing.T) {
 
 	var eg errgroup.Group
 	eg.Go(func() error {
-		return convert(src, pipe2wr, &Ignore{
+		err := convert(src, pipe2wr, &Ignore{
 			GeneratedFiles: true,
 			Files:          regexp.MustCompile(`[\\/]func[45]\.go$`),
 		}, "testdata")
-	})
-	defer func() {
-		if err := eg.Wait(); err != nil {
-			t.Fatalf("error during conversion: %v", err)
+		if strings.Contains(err.Error(), "write XML footer") {
+			return nil
 		}
-	}()
+		return err
+	})
+	defer eg.Wait()
 
 	v := Coverage{}
 	dec := xml.NewDecoder(pipe2rd)
@@ -233,9 +236,11 @@ func TestConvertSetMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to decode XML: %v", err)
 	}
-
 	if err := pipe2rd.Close(); err != nil {
 		t.Fatalf("failed to close pipe2rd: %v", err)
+	}
+	if err := eg.Wait(); err != nil {
+		t.Fatalf("error during conversion: %v", err)
 	}
 
 	assertCoverage(t, v)

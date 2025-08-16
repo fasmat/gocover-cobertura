@@ -85,8 +85,12 @@ func convert(in io.Reader, out io.Writer, ignore *Ignore, buildTags string) erro
 		return fmt.Errorf("parse coverage profiles: %w", err)
 	}
 
-	fmt.Fprint(out, xml.Header)
-	fmt.Fprintln(out, coberturaDTDDecl)
+	if _, err := fmt.Fprint(out, xml.Header); err != nil {
+		return fmt.Errorf("write XML header: %w", err)
+	}
+	if _, err := fmt.Fprintln(out, coberturaDTDDecl); err != nil {
+		return fmt.Errorf("write DTD declaration: %w", err)
+	}
 
 	encoder := xml.NewEncoder(out)
 	encoder.Indent("", "  ")
@@ -94,7 +98,9 @@ func convert(in io.Reader, out io.Writer, ignore *Ignore, buildTags string) erro
 		return fmt.Errorf("encode coverage: %w", err)
 	}
 
-	fmt.Fprintln(out)
+	if _, err := fmt.Fprintln(out); err != nil {
+		return fmt.Errorf("write XML footer: %w", err)
+	}
 	return nil
 }
 
