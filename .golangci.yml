@@ -31,8 +31,6 @@ linters:
     - unused
     - usestdlibvars
     - usetesting
-  disable:
-    - errcheck
   settings:
     copyloopvar:
       # Check all assigning the loop variable to another variable.
@@ -84,6 +82,11 @@ linters:
     usetesting:
       # Enable/disable `os.TempDir()` detections.
       os-temp-dir: true
+  exclusions:
+    rules:
+      - linters:
+          - errcheck
+        source: "defer"
 
 formatters:
   enable:
