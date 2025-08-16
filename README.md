@@ -1,5 +1,12 @@
 # gocover-cobertura
 
+[![Build Status](https://img.shields.io/github/actions/workflow/status/fasmat/gocover-cobertura/ci.yml)](https://github.com/fasmat/gocover-cobertura/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/fasmat/gocover-cobertura/graph/badge.svg?token=2WFR1O5B42)](https://codecov.io/gh/fasmat/gocover-cobertura)
+[![Go Report Card](https://goreportcard.com/badge/github.com/fasmat/gocover-cobertura)](https://goreportcard.com/report/github.com/fasmat/gocover-cobertura)
+[![Go Reference](https://pkg.go.dev/badge/github.com/fasmat/gocover-cobertura?status.svg)](https://pkg.go.dev/github.com/fasmat/gocover-cobertura?tab=doc)
+[![License](https://img.shields.io/github/license/fasmat/gocover-cobertura)](./LICENSE)
+[![Latest Release](https://img.shields.io/github/v/release/fasmat/gocover-cobertura)](https://github.com/fasmat/gocover-cobertura/releases/latest)
+
 This is a **fork** of <https://github.com/boumenot/gocover-cobertura>.
 
 At the time of this writing the repository appears to be on *pause* with several outstanding PRs, and open issues.
