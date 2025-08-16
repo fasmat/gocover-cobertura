@@ -48,4 +48,4 @@ jobs:
         uses: codecov/codecov-action@v5
         if: ${{ matrix.os == 'ubuntu-24.04' }}
         with:
-          token: ${{ secrets.CODECOV_TOKEN }} # TODO: setup codecov
+          token: ${{ secrets.CODECOV_TOKEN }}
