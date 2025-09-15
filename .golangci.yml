@@ -8,6 +8,7 @@ linters:
   enable:
     - copyloopvar
     - depguard
+    - dupl
     - errname
     - errorlint
     - exptostd
@@ -82,11 +83,15 @@ linters:
     usetesting:
       # Enable/disable `os.TempDir()` detections.
       os-temp-dir: true
+      # Enable/disable `context.Background()` detections.
+      context-background: true
+      # Enable/disable `context.TODO()` detections.
+      context-todo: true
   exclusions:
     rules:
-      - linters:
+      - source: "defer"
+        linters:
           - errcheck
-        source: "defer"
 
 formatters:
   enable:
