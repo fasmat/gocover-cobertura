@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/tools/cover"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -126,7 +127,7 @@ func TestParseProfileNilPackages(t *testing.T) {
 	t.Parallel()
 
 	v := Coverage{}
-	profile := Profile{FileName: "does-not-exist"}
+	profile := cover.Profile{FileName: "does-not-exist"}
 	err := v.parseProfile(&profile, nil, &Ignore{})
 	if err == nil || !strings.Contains(err.Error(), "package required when using go modules") {
 		t.Fatalf("expected error about missing package, got: %v", err)
@@ -137,7 +138,7 @@ func TestParseProfileEmptyPackages(t *testing.T) {
 	t.Parallel()
 
 	v := Coverage{}
-	profile := Profile{FileName: "does-not-exist"}
+	profile := cover.Profile{FileName: "does-not-exist"}
 	err := v.parseProfile(&profile, &packages.Package{}, &Ignore{})
 	if err == nil || !strings.Contains(err.Error(), "package required when using go modules") {
 		t.Fatalf("expected error about missing package, got: %v", err)
@@ -148,7 +149,7 @@ func TestParseProfileDoesNotExist(t *testing.T) {
 	t.Parallel()
 
 	v := Coverage{}
-	profile := Profile{FileName: "does-not-exist"}
+	profile := cover.Profile{FileName: "does-not-exist"}
 
 	pkg := packages.Package{
 		Name:   "does-not-exist",
@@ -165,7 +166,7 @@ func TestParseProfileNotReadable(t *testing.T) {
 	t.Parallel()
 
 	v := Coverage{}
-	profile := Profile{FileName: os.DevNull}
+	profile := cover.Profile{FileName: os.DevNull}
 	err := v.parseProfile(&profile, nil, &Ignore{})
 	if err == nil || !strings.Contains(err.Error(), "package required when using go modules") {
 		t.Fatalf("expected error about missing package, got: %v", err)
@@ -189,7 +190,7 @@ func TestParseProfilePermissionDenied(t *testing.T) {
 		t.Fatalf("failed to change file permissions: %v", err)
 	}
 	v := Coverage{}
-	profile := Profile{FileName: tempFile.Name()}
+	profile := cover.Profile{FileName: tempFile.Name()}
 	pkg := packages.Package{
 		GoFiles: []string{
 			tempFile.Name(),

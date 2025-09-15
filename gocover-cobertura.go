@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/tools/cover"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -63,7 +64,8 @@ func main() {
 }
 
 func convert(in io.Reader, out io.Writer, ignore *Ignore, buildTags string) error {
-	profiles, err := ParseProfilesFromReader(in, ignore)
+	ignoreRd := NewIgnoreReader(ignore, in)
+	profiles, err := cover.ParseProfilesFromReader(ignoreRd)
 	if err != nil {
 		return fmt.Errorf("parse profiles: %w", err)
 	}
@@ -104,7 +106,7 @@ func convert(in io.Reader, out io.Writer, ignore *Ignore, buildTags string) erro
 	return nil
 }
 
-func getPackages(profiles []*Profile, buildTags string) ([]*packages.Package, error) {
+func getPackages(profiles []*cover.Profile, buildTags string) ([]*packages.Package, error) {
 	if len(profiles) == 0 {
 		return []*packages.Package{}, nil
 	}
@@ -146,7 +148,11 @@ func findAbsFilePath(pkg *packages.Package, profileName string) string {
 	return ""
 }
 
-func (cov *Coverage) parseProfiles(profiles []*Profile, pkgMap map[string]*packages.Package, ignore *Ignore) error {
+func (cov *Coverage) parseProfiles(
+	profiles []*cover.Profile,
+	pkgMap map[string]*packages.Package,
+	ignore *Ignore,
+) error {
 	cov.Packages = []*Package{}
 	for _, profile := range profiles {
 		pkgName := getPackageName(profile.FileName)
@@ -161,7 +167,7 @@ func (cov *Coverage) parseProfiles(profiles []*Profile, pkgMap map[string]*packa
 	return nil
 }
 
-func (cov *Coverage) parseProfile(profile *Profile, pkgPkg *packages.Package, ignore *Ignore) error {
+func (cov *Coverage) parseProfile(profile *cover.Profile, pkgPkg *packages.Package, ignore *Ignore) error {
 	if pkgPkg == nil || pkgPkg.Module == nil {
 		return errors.New("package required when using go modules")
 	}
@@ -216,7 +222,7 @@ type fileVisitor struct {
 	fileData []byte
 	pkg      *Package
 	classes  map[string]*Class
-	profile  *Profile
+	profile  *cover.Profile
 }
 
 func (v *fileVisitor) Visit(node ast.Node) ast.Visitor {

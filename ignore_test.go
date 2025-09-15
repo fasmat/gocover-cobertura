@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"io"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -101,5 +103,171 @@ func TestIgnore(t *testing.T) {
 					test.FileName, !test.GenExpected, test.GenExpected)
 			}
 		})
+	}
+}
+
+func TestIgnoreReader(t *testing.T) {
+	t.Parallel()
+
+	ignore := &Ignore{
+		Dirs:  regexp.MustCompile(`[\\/]bar$`),
+		Files: regexp.MustCompile(`bar[\\/]gen\.go$`),
+	}
+
+	input := `mode: count
+foo/bar/zip.go:10.1,20.1 5 1
+foo/bar/zip/test.go:10.1,20.1 5 1
+zip/foobar/gen.go:10.1,20.1 5 1
+foobar/test.go:10.1,20.1 5 1
+foobar/test2.go:10.1,20.1 5 1
+`
+
+	expected := `mode: count
+foobar/test.go:10.1,20.1 5 1
+foobar/test2.go:10.1,20.1 5 1
+`
+
+	ir := NewIgnoreReader(ignore, strings.NewReader(input))
+	var sb strings.Builder
+	if _, err := io.Copy(&sb, ir); err != nil {
+		t.Fatalf("Copy failed: %v", err)
+	}
+	got := sb.String()
+	if got != expected {
+		t.Errorf("IgnoreReader result:\nGot:\n%s\nExpected:\n%s", got, expected)
+	}
+}
+
+func TestIgnoreReader_Empty(t *testing.T) {
+	t.Parallel()
+
+	ignore := &Ignore{
+		Dirs:  regexp.MustCompile(`[\\/]bar$`),
+		Files: regexp.MustCompile(`bar[\\/]gen\.go$`),
+	}
+	input := `mode: count
+`
+	expected := `mode: count
+`
+
+	ir := NewIgnoreReader(ignore, strings.NewReader(input))
+	var sb strings.Builder
+	if _, err := io.Copy(&sb, ir); err != nil {
+		t.Fatalf("Copy failed: %v", err)
+	}
+	got := sb.String()
+	if got != expected {
+		t.Errorf("IgnoreReader result:\nGot:\n%s\nExpected:\n%s", got, expected)
+	}
+}
+
+func TestIgnoreReader_AllIgnored(t *testing.T) {
+	t.Parallel()
+
+	ignore := &Ignore{
+		Dirs:  regexp.MustCompile(`[\\/]bar$`),
+		Files: regexp.MustCompile(`bar[\\/]gen\.go$`),
+	}
+	input := `mode: count
+foo/bar/zip.go:10.1,20.1 5 1
+foo/bar/zip/test.go:10.1,20.1 5 1
+zip/foobar/gen.go:10.1,20.1 5 1
+`
+	expected := `mode: count
+`
+
+	ir := NewIgnoreReader(ignore, strings.NewReader(input))
+	var sb strings.Builder
+	if _, err := io.Copy(&sb, ir); err != nil {
+		t.Fatalf("Copy failed: %v", err)
+	}
+	got := sb.String()
+	if got != expected {
+		t.Errorf("IgnoreReader result:\nGot:\n%s\nExpected:\n%s", got, expected)
+	}
+}
+
+type oneByteAtATimeReader struct {
+	data []byte
+	pos  int
+}
+
+func (r *oneByteAtATimeReader) Read(p []byte) (n int, err error) {
+	if r.pos >= len(r.data) {
+		return 0, io.EOF
+	}
+	p[0] = r.data[r.pos]
+	r.pos++
+	return 1, nil
+}
+
+func TestIgnoreReader_SlowSource(t *testing.T) {
+	t.Parallel()
+
+	slowSource := &oneByteAtATimeReader{data: []byte(`mode: count
+foo/bar/zip.go:10.1,20.1 5 1
+foo/bar/zip/test.go:10.1,20.1 5 1
+zip/foobar/gen.go:10.1,20.1 5 1
+foobar/test.go:10.1,20.1 5 1
+foobar/test2.go:10.1,20.1 5 1
+`)}
+
+	ignore := &Ignore{
+		Dirs:  regexp.MustCompile(`[\\/]bar$`),
+		Files: regexp.MustCompile(`bar[\\/]gen\.go$`),
+	}
+	expected := `mode: count
+foobar/test.go:10.1,20.1 5 1
+foobar/test2.go:10.1,20.1 5 1
+`
+
+	ir := NewIgnoreReader(ignore, slowSource)
+	var sb strings.Builder
+	if _, err := io.Copy(&sb, ir); err != nil {
+		t.Fatalf("Copy failed: %v", err)
+	}
+	got := sb.String()
+	if got != expected {
+		t.Errorf("IgnoreReader result:\nGot:\n%s\nExpected:\n%s", got, expected)
+	}
+}
+
+func TestIgnoreReader_SlowUser(t *testing.T) {
+	t.Parallel()
+
+	ignore := &Ignore{
+		Dirs:  regexp.MustCompile(`[\\/]bar$`),
+		Files: regexp.MustCompile(`bar[\\/]gen\.go$`),
+	}
+
+	input := `mode: count
+foo/bar/zip.go:10.1,20.1 5 1
+foo/bar/zip/test.go:10.1,20.1 5 1
+zip/foobar/gen.go:10.1,20.1 5 1
+foobar/test.go:10.1,20.1 5 1
+foobar/test2.go:10.1,20.1 5 1
+`
+
+	expected := `mode: count
+foobar/test.go:10.1,20.1 5 1
+foobar/test2.go:10.1,20.1 5 1
+`
+
+	ir := NewIgnoreReader(ignore, strings.NewReader(input))
+	var sb strings.Builder
+	buf := make([]byte, 1)
+	for {
+		n, err := ir.Read(buf)
+		sb.Write(buf[:n])
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Read failed: %v", err)
+		}
+	}
+	got := sb.String()
+	if got != expected {
+		t.Errorf("IgnoreReader result:\nGot:\n%s\nExpected:\n%s", got, expected)
 	}
 }

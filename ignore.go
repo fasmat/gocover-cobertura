@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
+	"io"
 	"path/filepath"
 	"regexp"
 )
@@ -15,7 +18,7 @@ type Ignore struct {
 	cache          map[string]bool
 }
 
-func (i *Ignore) Match(fileName string, data []byte) (ret bool) {
+func (i *Ignore) Match(fileName string, data []byte) bool {
 	if i.cache == nil {
 		i.cache = map[string]bool{}
 	}
@@ -24,11 +27,11 @@ func (i *Ignore) Match(fileName string, data []byte) (ret bool) {
 	}
 
 	dir := filepath.Dir(fileName)
-
-	if i.dirMatch(dir) ||
-		(i.Files != nil && i.Files.MatchString(fileName)) {
-		ret = true
-	} else if i.GeneratedFiles {
+	if i.dirMatch(dir) || (i.Files != nil && i.Files.MatchString(fileName)) {
+		i.cache[fileName] = true
+		return true
+	}
+	if i.GeneratedFiles {
 		if data == nil {
 			return false // no cache if no content provided
 		}
@@ -36,12 +39,12 @@ func (i *Ignore) Match(fileName string, data []byte) (ret bool) {
 		if len(data) > 256 {
 			data = data[:256]
 		}
-		ret = genCodeRe.Match(data)
+		match := genCodeRe.Match(data)
+		i.cache[fileName] = match
+		return match
 	}
 
-	i.cache[fileName] = ret
-
-	return ret
+	return false
 }
 
 func (i *Ignore) dirMatch(dir string) bool {
@@ -59,4 +62,73 @@ func (i *Ignore) dirMatch(dir string) bool {
 		}
 		dir = dir[:len(dir)-1] // without last separator
 	}
+}
+
+// IgnoreReader is an io.Reader that filters out lines from a coverage profile
+// that match the Ignore rules. It always includes the mode line.
+type IgnoreReader struct {
+	ignore  *Ignore
+	scanner *bufio.Scanner
+	buf     []byte
+}
+
+// NewIgnoreReader creates a new IgnoreReader that reads from rd and filters
+// lines based on the provided Ignore rules.
+func NewIgnoreReader(ignore *Ignore, rd io.Reader) *IgnoreReader {
+	return &IgnoreReader{
+		ignore:  ignore,
+		scanner: bufio.NewScanner(rd),
+	}
+}
+
+func (ir *IgnoreReader) Read(p []byte) (n int, err error) {
+	if ir.buf != nil {
+		n = copy(p, ir.buf)
+		if n < len(ir.buf) {
+			ir.buf = ir.buf[n:]
+		} else {
+			ir.buf = nil
+		}
+		return n, nil
+	}
+
+	for ir.scanner.Scan() {
+		ir.buf = ir.scanner.Bytes()
+		ir.buf = append(ir.buf, '\n')
+
+		const m = "mode: "
+		if bytes.Index(ir.buf, []byte(m)) == 0 {
+			// always include mode line
+			n = copy(p, ir.buf)
+			if n < len(ir.buf) {
+				ir.buf = ir.buf[n:]
+			} else {
+				ir.buf = nil
+			}
+			return n, nil
+		}
+
+		// filename is up to the first colon
+		const sep = ":"
+		fn := ""
+		if idx := bytes.Index(ir.buf, []byte(sep)); idx != -1 {
+			fn = string(ir.buf[:idx])
+		}
+		if ir.ignore.Match(fn, nil) {
+			ir.buf = nil
+			continue
+		}
+		n = copy(p, ir.buf)
+		ir.buf = ir.buf[n:]
+		if n < len(ir.buf) {
+			// leave the rest for next read
+			return n, nil
+		}
+		ir.buf = nil
+		return n, nil
+	}
+	if err := ir.scanner.Err(); err != nil {
+		return 0, err
+	}
+	return 0, io.EOF
 }
