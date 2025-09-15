@@ -38,6 +38,7 @@ func main() {
 	ignoreFilesRe := flag.String("ignore-files", "", "ignore files matching this regexp")
 	buildTags := flag.String("build-tags", "", "build tags to use when loading packages")
 	flag.Parse()
+	log.SetOutput(os.Stderr)
 
 	var err error
 	if *ignoreDirsRe != "" {

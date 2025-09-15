@@ -10,8 +10,17 @@
 This is a **fork** of <https://github.com/boumenot/gocover-cobertura>.
 
 At the time of this writing the repository appears to be on *pause* with several outstanding PRs, and open issues.
-The main motivator for creating this fork was to update the code base to a more recent version of go and add the
-ability to pass build tags to the converter that were used when recording the coverage.
+The main motivator for creating this fork was to add the ability to pass build tags to the converter that were used
+when recording the coverage.
+
+Additionally the following changes were made:
+
+- allow passing build tags to converter (see `-build-tags` flag)
+- update the code base to a more recent version of go
+- instead of forking `golang.org/x/tools/cover` to parse the coverage profile, use the package directly
+- reduce the number of dependencies (3 vs 7)
+- stricter linting of the codebase with `golangci-lint`
+- increase test coverage
 
 This is a simple helper tool for generating XML output in [Cobertura](http://cobertura.sourceforge.net/) format
 for CIs like [Jenkins](https://wiki.jenkins-ci.org/display/JENKINS/Cobertura+Plugin) and others
@@ -72,3 +81,8 @@ Some flags can be passed (each flag should only be used once):
 
   ignore generated files. Typically files containing a comment indicating that the file has been automatically
   generated. See `genCodeRe` regexp in [ignore.go](ignore.go).
+
+- `-build-tags`
+
+  comma-separated list of build tags to consider when looking for source files. This should match the build tags
+  used when running `go test -coverprofile=...`.
