@@ -15,7 +15,7 @@ when recording the coverage.
 
 Additionally the following changes were made:
 
-- allow passing build tags to converter (see `-build-tags` flag)
+- allow passing build tags to converter (see `-tags` flag)
 - update the code base to a more recent version of go
 - instead of forking `golang.org/x/tools/cover` to parse the coverage profile, use the package directly
 - reduce the number of dependencies (3 vs 7)

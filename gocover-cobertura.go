@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
@@ -30,13 +31,34 @@ const coberturaDTDDecl = `<!DOCTYPE coverage SYSTEM "http://cobertura.sourceforg
 func main() {
 	var ignore Ignore
 	var byFiles bool
+	var help bool
 
+	flag.BoolVar(&help, "h", false, "show help")
 	flag.BoolVar(&byFiles, "by-files", false, "code coverage by file, not class")
 	flag.BoolVar(&ignore.GeneratedFiles, "ignore-gen-files", false, "ignore generated files")
 	ignoreDirsRe := flag.String("ignore-dirs", "", "ignore dirs matching this regexp")
 	ignoreFilesRe := flag.String("ignore-files", "", "ignore files matching this regexp")
-	buildTags := flag.String("build-tags", "", "build tags to use when loading packages")
+	buildTags := flag.String("tags", "", "build tags to use when loading packages")
 	flag.Parse()
+
+	if help {
+		fmt.Fprintf(os.Stderr, "gocover-cobertura converts Go code coverage profiles to Cobertura XML format.\n\n")
+		fmt.Fprintf(os.Stderr, "It reads from standard input and writes to standard output.\n")
+		fmt.Fprintf(os.Stderr, "It can be used to generate code coverage reports compatible with tools that\n")
+		fmt.Fprintf(os.Stderr, "expect Cobertura format, such as SonarQube or Jenkins.\n\n")
+		fmt.Fprintf(os.Stderr, "Note: this tool needs to be run in a Go module (a directory with a go.mod file).\n\n")
+
+		fmt.Fprintf(os.Stderr, "Usage:\n")
+		fmt.Fprintf(os.Stderr, "  go test -coverprofile=coverage.out ./...\n")
+		if runtime.GOOS == "windows" {
+			fmt.Fprintf(os.Stderr, "  type coverage.out | gocover-cobertura.exe > coverage.xml\n")
+		} else {
+			fmt.Fprintf(os.Stderr, "  cat coverage.out | gocover-cobertura > coverage.xml\n")
+		}
+		fmt.Fprintf(os.Stderr, "\nOptions:\n")
+		flag.PrintDefaults()
+		return
+	}
 
 	var err error
 	if *ignoreDirsRe != "" {

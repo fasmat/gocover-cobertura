@@ -17,6 +17,44 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
+func TestMainHelp(t *testing.T) {
+	t.Parallel()
+
+	fname := filepath.Join(t.TempDir(), "stdout")
+	temp, err := os.Create(fname)
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer temp.Close()
+	stderr := os.Stderr
+	defer func() {
+		os.Stderr = stderr
+	}()
+
+	os.Stderr = temp
+	os.Args = []string{"gocover-cobertura", "-h"}
+	main()
+	os.Stderr = stderr
+
+	if err := temp.Close(); err != nil {
+		t.Fatalf("failed to close temp file: %v", err)
+	}
+
+	outputString, err := os.ReadFile(fname)
+	if err != nil {
+		t.Fatalf("failed to read temp file: %v", err)
+	}
+	if !bytes.Contains(outputString, []byte("gocover-cobertura converts Go code coverage profiles")) {
+		t.Errorf("missing help text")
+	}
+	if !bytes.Contains(outputString, []byte("It reads from standard input and writes to standard output.")) {
+		t.Errorf("missing help text")
+	}
+	if !bytes.Contains(outputString, []byte("Usage:")) {
+		t.Errorf("missing usage text")
+	}
+}
+
 func Test_Main(t *testing.T) {
 	t.Parallel()
 
@@ -25,6 +63,7 @@ func Test_Main(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
+	defer temp.Close()
 
 	stdout := os.Stdout
 	defer func() {
