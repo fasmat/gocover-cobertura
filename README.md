@@ -21,6 +21,7 @@ Additionally the following changes were made:
 - reduce the number of dependencies (3 vs 7)
 - stricter linting of the codebase with `golangci-lint`
 - increase test coverage
+- light improvements to CLI (add help with `-h`, allow for inputs/outputs other than stdin/stdout)
 
 This is a simple helper tool for generating XML output in [Cobertura](http://cobertura.sourceforge.net/) format
 for CIs like [Jenkins](https://wiki.jenkins-ci.org/display/JENKINS/Cobertura+Plugin) and others

@@ -14,6 +14,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -32,7 +33,13 @@ func main() {
 	var ignore Ignore
 	var byFiles bool
 	var help bool
+	inFile := os.Stdin
+	outFile := os.Stdout
 
+	inFileName := ""
+	outFileName := ""
+	flag.StringVar(&inFileName, "f", "", "path to coverage file (default: stdin)")
+	flag.StringVar(&outFileName, "o", "", "path to output file (default: stdout)")
 	flag.BoolVar(&help, "h", false, "show help")
 	flag.BoolVar(&byFiles, "by-files", false, "code coverage by file, not class")
 	flag.BoolVar(&ignore.GeneratedFiles, "ignore-gen-files", false, "ignore generated files")
@@ -59,6 +66,26 @@ func main() {
 		flag.PrintDefaults()
 		return
 	}
+	if inFileName != "" {
+		var err error
+		inFile, err = os.Open(inFileName)
+		if err != nil {
+			log.Fatalf("Failed to open input file %q: %s", inFileName, err)
+		}
+		defer inFile.Close()
+	}
+	if outFileName != "" {
+		var err error
+		err = os.MkdirAll(filepath.Dir(outFileName), 0o755)
+		if err != nil && !errors.Is(err, fs.ErrExist) {
+			log.Fatalf("Failed to create output directory for %q: %s", outFileName, err)
+		}
+		outFile, err = os.Create(outFileName)
+		if err != nil {
+			log.Fatalf("Failed to create output file %q: %s", outFileName, err)
+		}
+		defer outFile.Close()
+	}
 
 	var err error
 	if *ignoreDirsRe != "" {
@@ -79,7 +106,7 @@ func main() {
 		log.Printf("Using build tags: %s", *buildTags)
 	}
 
-	if err := convert(os.Stdin, os.Stdout, &ignore, byFiles, *buildTags); err != nil {
+	if err := convert(inFile, outFile, &ignore, byFiles, *buildTags); err != nil {
 		log.Fatalf("code coverage conversion failed: %s", err)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"errors"
+	"flag"
 	"io"
 	"io/fs"
 	"os"
@@ -17,9 +18,48 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-func TestMainHelp(t *testing.T) {
-	t.Parallel()
+func resetFlags() {
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
+}
 
+// nolint: paralleltest // uses flags, os.Args and os.Stdout
+func Test_Main(t *testing.T) {
+	fname := filepath.Join(t.TempDir(), "stdout")
+	temp, err := os.Create(fname)
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer temp.Close()
+
+	stdout := os.Stdout
+	defer func() {
+		os.Stdout = stdout
+	}()
+
+	resetFlags()
+	os.Stdout = temp
+	main()
+	os.Stdout = stdout
+
+	if err := temp.Close(); err != nil {
+		t.Fatalf("failed to close temp file: %v", err)
+	}
+	outputBytes, err := os.ReadFile(fname)
+	if err != nil {
+		t.Fatalf("failed to read temp file: %v", err)
+	}
+
+	outputString := string(outputBytes)
+	if !strings.Contains(outputString, xml.Header) {
+		t.Errorf("missing XML header")
+	}
+	if !strings.Contains(outputString, coberturaDTDDecl) {
+		t.Errorf("missing DTDDecl")
+	}
+}
+
+// nolint: paralleltest // uses flags, os.Args and os.Stderr
+func TestMainHelp(t *testing.T) {
 	fname := filepath.Join(t.TempDir(), "stdout")
 	temp, err := os.Create(fname)
 	if err != nil {
@@ -31,6 +71,7 @@ func TestMainHelp(t *testing.T) {
 		os.Stderr = stderr
 	}()
 
+	resetFlags()
 	os.Stderr = temp
 	os.Args = []string{"gocover-cobertura", "-h"}
 	main()
@@ -55,31 +96,22 @@ func TestMainHelp(t *testing.T) {
 	}
 }
 
-func Test_Main(t *testing.T) {
-	t.Parallel()
-
-	fname := filepath.Join(t.TempDir(), "stdout")
-	temp, err := os.Create(fname)
+// nolint: paralleltest // uses flags and os.Args
+func TestMainInfileOutFile(t *testing.T) {
+	inFileName := filepath.Join(t.TempDir(), "infile.out")
+	outFileName := filepath.Join(t.TempDir(), "outdir", "outfile.xml")
+	err := os.WriteFile(inFileName, []byte("mode: set\n"), 0o644)
 	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
+		t.Fatalf("failed to write infile: %v", err)
 	}
-	defer temp.Close()
 
-	stdout := os.Stdout
-	defer func() {
-		os.Stdout = stdout
-	}()
-
-	os.Stdout = temp
+	resetFlags()
+	os.Args = []string{"gocover-cobertura", "-f", inFileName, "-o", outFileName}
 	main()
-	os.Stdout = stdout
 
-	if err := temp.Close(); err != nil {
-		t.Fatalf("failed to close temp file: %v", err)
-	}
-	outputBytes, err := os.ReadFile(fname)
+	outputBytes, err := os.ReadFile(outFileName)
 	if err != nil {
-		t.Fatalf("failed to read temp file: %v", err)
+		t.Fatalf("failed to read outfile: %v", err)
 	}
 
 	outputString := string(outputBytes)
