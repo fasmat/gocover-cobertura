@@ -17,11 +17,11 @@ Additionally the following changes were made:
 
 - allow passing build tags to converter (see `-tags` flag)
 - update the code base to a more recent version of go
-- instead of forking `golang.org/x/tools/cover` to parse the coverage profile, use the package directly
-- reduce the number of dependencies (3 vs 7)
+- instead of forking an old version of `golang.org/x/tools/cover` to parse the coverage profile, use the latest version of the package directly
+- reduce the number of dependencies used by the tool (3 vs 7)
 - stricter linting of the codebase with `golangci-lint`
 - increase test coverage
-- light improvements to CLI (add help with `-h`, allow for inputs/outputs other than stdin/stdout)
+- small improvements to CLI (add help with `-h`, allow for inputs/outputs other than stdin/stdout)
 
 This is a simple helper tool for generating XML output in [Cobertura](http://cobertura.sourceforge.net/) format
 for CIs like [Jenkins](https://wiki.jenkins-ci.org/display/JENKINS/Cobertura+Plugin) and others
@@ -32,7 +32,7 @@ from [go tool cover](https://github.com/golang/go/tree/master/src/cmd/cover/) ou
 Just type the following to install the program and its dependencies:
 
 ```shell
-go install github.com/fasmat/gocover-cobertura@latest
+go install github.com/fasmat/gocover-cobertura@v1.0.0
 ```
 
 ## Usage
