@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/xml"
 	"errors"
 	"io"
@@ -12,7 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	"golang.org/x/sync/errgroup"
 	"golang.org/x/tools/cover"
 	"golang.org/x/tools/go/packages"
 )
@@ -55,11 +55,9 @@ func Test_Main(t *testing.T) {
 func TestConvertParseProfilesError(t *testing.T) {
 	t.Parallel()
 
-	pipe2rd, pipe2wr := io.Pipe()
-	defer pipe2rd.Close()
-	defer pipe2wr.Close()
+	out := new(bytes.Buffer)
 
-	err := convert(strings.NewReader("invalid data"), pipe2wr, &Ignore{}, "")
+	err := convert(strings.NewReader("invalid data"), out, &Ignore{}, false, "")
 	if err == nil || !strings.Contains(err.Error(), "bad mode line: invalid data") {
 		t.Fatalf("expected error about bad mode line, got: %v", err)
 	}
@@ -74,7 +72,7 @@ func TestConvertOutputError(t *testing.T) {
 		t.Fatalf("failed to close pipe2rd: %v", err)
 	}
 
-	err := convert(strings.NewReader("mode: set"), pipe2wr, &Ignore{}, "")
+	err := convert(strings.NewReader("mode: set"), pipe2wr, &Ignore{}, false, "")
 	if !errors.Is(err, io.ErrClosedPipe) {
 		t.Fatalf("expected error about closed pipe, got: %v", err)
 	}
@@ -84,32 +82,18 @@ func TestConvertEmpty(t *testing.T) {
 	t.Parallel()
 
 	data := `mode: set`
+	out := new(bytes.Buffer)
 
-	pipe2rd, pipe2wr := io.Pipe()
-	defer pipe2rd.Close()
-	defer pipe2wr.Close()
-
-	var eg errgroup.Group
-	eg.Go(func() error {
-		err := convert(strings.NewReader(data), pipe2wr, &Ignore{}, "")
-		if strings.Contains(err.Error(), "write XML footer") {
-			return nil
-		}
-		return err
-	})
-	defer eg.Wait()
+	err := convert(strings.NewReader(data), out, &Ignore{}, false, "")
+	if err != nil {
+		t.Fatalf("convert failed: %v", err)
+	}
 
 	v := Coverage{}
-	dec := xml.NewDecoder(pipe2rd)
-	err := dec.Decode(&v)
+	dec := xml.NewDecoder(out)
+	err = dec.Decode(&v)
 	if err != nil {
 		t.Fatalf("failed to decode XML: %v", err)
-	}
-	if err := pipe2rd.Close(); err != nil {
-		t.Fatalf("failed to close pipe2rd: %v", err)
-	}
-	if err := eg.Wait(); err != nil {
-		t.Fatalf("error during conversion: %v", err)
 	}
 
 	if v.XMLName.Local != "coverage" {
@@ -128,7 +112,7 @@ func TestParseProfileNilPackages(t *testing.T) {
 
 	v := Coverage{}
 	profile := cover.Profile{FileName: "does-not-exist"}
-	err := v.parseProfile(&profile, nil, &Ignore{})
+	err := v.parseProfile(&profile, nil, &Ignore{}, false)
 	if err == nil || !strings.Contains(err.Error(), "package required when using go modules") {
 		t.Fatalf("expected error about missing package, got: %v", err)
 	}
@@ -139,7 +123,7 @@ func TestParseProfileEmptyPackages(t *testing.T) {
 
 	v := Coverage{}
 	profile := cover.Profile{FileName: "does-not-exist"}
-	err := v.parseProfile(&profile, &packages.Package{}, &Ignore{})
+	err := v.parseProfile(&profile, &packages.Package{}, &Ignore{}, false)
 	if err == nil || !strings.Contains(err.Error(), "package required when using go modules") {
 		t.Fatalf("expected error about missing package, got: %v", err)
 	}
@@ -156,7 +140,7 @@ func TestParseProfileDoesNotExist(t *testing.T) {
 		Module: &packages.Module{},
 	}
 
-	err := v.parseProfile(&profile, &pkg, &Ignore{})
+	err := v.parseProfile(&profile, &pkg, &Ignore{}, false)
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("expected error about file not existing, got: %v", err)
 	}
@@ -167,7 +151,7 @@ func TestParseProfileNotReadable(t *testing.T) {
 
 	v := Coverage{}
 	profile := cover.Profile{FileName: os.DevNull}
-	err := v.parseProfile(&profile, nil, &Ignore{})
+	err := v.parseProfile(&profile, nil, &Ignore{}, false)
 	if err == nil || !strings.Contains(err.Error(), "package required when using go modules") {
 		t.Fatalf("expected error about missing package, got: %v", err)
 	}
@@ -199,68 +183,71 @@ func TestParseProfilePermissionDenied(t *testing.T) {
 			Path: filepath.Dir(tempFile.Name()),
 		},
 	}
-	err = v.parseProfile(&profile, &pkg, &Ignore{})
+	err = v.parseProfile(&profile, &pkg, &Ignore{}, false)
 	if !errors.Is(err, fs.ErrPermission) {
 		t.Fatalf("expected permission denied error, got: %v", err)
 	}
 }
 
-func TestConvertSetMode(t *testing.T) {
+func TestConvert(t *testing.T) {
 	t.Parallel()
 
-	src, err := os.Open("testdata/testdata_set.txt")
-	if err != nil {
-		t.Fatalf("failed to open testdata_set.txt: %v", err)
-	}
-	defer src.Close()
-
-	pipe2rd, pipe2wr := io.Pipe()
-	defer pipe2rd.Close()
-	defer pipe2wr.Close()
-
-	var eg errgroup.Group
-	eg.Go(func() error {
-		err := convert(src, pipe2wr, &Ignore{
-			GeneratedFiles: true,
-			Files:          regexp.MustCompile(`[\\/]func[45]\.go$`),
-		}, "testdata")
-		if strings.Contains(err.Error(), "write XML footer") {
-			return nil
-		}
-		return err
-	})
-	defer eg.Wait()
-
-	v := Coverage{}
-	dec := xml.NewDecoder(pipe2rd)
-	err = dec.Decode(&v)
-	if err != nil {
-		t.Fatalf("failed to decode XML: %v", err)
-	}
-	if err := pipe2rd.Close(); err != nil {
-		t.Fatalf("failed to close pipe2rd: %v", err)
-	}
-	if err := eg.Wait(); err != nil {
-		t.Fatalf("error during conversion: %v", err)
+	tt := []struct {
+		name       string
+		byFiles    bool
+		class1Name string
+		class2Name string
+	}{
+		{"default", false, "-", "Type1"},
+		{"byFiles", true, "testdata.func1.go", "testdata.func2.go"},
 	}
 
-	assertCoverage(t, v)
-	p := v.Packages[0]
-	assertPackage(t, p)
-	c := p.Classes[0]
-	assertClass(t, c)
-	m := c.Methods[0]
-	assertMethod(t, m)
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	c = p.Classes[1]
-	if c.Name != "Type1" {
-		t.Errorf("expected class name 'Type1', got '%s'", c.Name)
-	}
-	if c.Filename != "testdata/func2.go" {
-		t.Errorf("expected class filename 'testdata/func2.go', got '%s'", c.Filename)
-	}
-	if len(c.Methods) != 3 {
-		t.Fatalf("expected 3 methods, got %d", len(c.Methods))
+			src, err := os.Open("testdata/testdata_set.txt")
+			if err != nil {
+				t.Fatalf("failed to open testdata_set.txt: %v", err)
+			}
+			defer src.Close()
+
+			out := new(bytes.Buffer)
+
+			err = convert(src, out, &Ignore{
+				GeneratedFiles: true,
+				Files:          regexp.MustCompile(`[\\/]func[45]\.go$`),
+			}, tc.byFiles, "testdata")
+			if err != nil {
+				t.Fatalf("convert failed: %v", err)
+			}
+
+			v := Coverage{}
+			dec := xml.NewDecoder(out)
+			err = dec.Decode(&v)
+			if err != nil {
+				t.Fatalf("failed to decode XML: %v", err)
+			}
+
+			assertCoverage(t, v)
+			p := v.Packages[0]
+			assertPackage(t, p)
+			c := p.Classes[0]
+			assertClass(t, c, tc.class1Name)
+			m := c.Methods[0]
+			assertMethod(t, m)
+
+			c = p.Classes[1]
+			if c.Name != tc.class2Name {
+				t.Errorf("expected class name '%s', got '%s'", tc.class2Name, c.Name)
+			}
+			if c.Filename != "testdata/func2.go" {
+				t.Errorf("expected class filename 'testdata/func2.go', got '%s'", c.Filename)
+			}
+			if len(c.Methods) != 3 {
+				t.Fatalf("expected 3 methods, got %d", len(c.Methods))
+			}
+		})
 	}
 }
 
@@ -288,10 +275,10 @@ func assertMethod(t *testing.T, m *Method) {
 	}
 }
 
-func assertClass(t *testing.T, c *Class) {
+func assertClass(t *testing.T, c *Class, className string) {
 	t.Helper()
 
-	if c.Name != "-" {
+	if c.Name != className {
 		t.Errorf("expected class name '-', got '%s'", c.Name)
 	}
 	if c.Filename != "testdata/func1.go" {

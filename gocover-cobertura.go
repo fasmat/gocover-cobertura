@@ -27,10 +27,9 @@ import (
 
 const coberturaDTDDecl = `<!DOCTYPE coverage SYSTEM "http://cobertura.sourceforge.net/xml/coverage-04.dtd">`
 
-var byFiles bool
-
 func main() {
 	var ignore Ignore
+	var byFiles bool
 
 	flag.BoolVar(&byFiles, "by-files", false, "code coverage by file, not class")
 	flag.BoolVar(&ignore.GeneratedFiles, "ignore-gen-files", false, "ignore generated files")
@@ -38,7 +37,6 @@ func main() {
 	ignoreFilesRe := flag.String("ignore-files", "", "ignore files matching this regexp")
 	buildTags := flag.String("build-tags", "", "build tags to use when loading packages")
 	flag.Parse()
-	log.SetOutput(os.Stderr)
 
 	var err error
 	if *ignoreDirsRe != "" {
@@ -59,12 +57,12 @@ func main() {
 		log.Printf("Using build tags: %s", *buildTags)
 	}
 
-	if err := convert(os.Stdin, os.Stdout, &ignore, *buildTags); err != nil {
+	if err := convert(os.Stdin, os.Stdout, &ignore, byFiles, *buildTags); err != nil {
 		log.Fatalf("code coverage conversion failed: %s", err)
 	}
 }
 
-func convert(in io.Reader, out io.Writer, ignore *Ignore, buildTags string) error {
+func convert(in io.Reader, out io.Writer, ignore *Ignore, byFiles bool, buildTags string) error {
 	ignoreRd := NewIgnoreReader(ignore, in)
 	profiles, err := cover.ParseProfilesFromReader(ignoreRd)
 	if err != nil {
@@ -83,8 +81,12 @@ func convert(in io.Reader, out io.Writer, ignore *Ignore, buildTags string) erro
 		pkgMap[pkg.ID] = pkg
 	}
 
-	coverage := Coverage{Sources: sources, Packages: nil, Timestamp: time.Now().UnixNano() / int64(time.Millisecond)}
-	if err := coverage.parseProfiles(profiles, pkgMap, ignore); err != nil {
+	coverage := Coverage{
+		Sources:   sources,
+		Packages:  nil,
+		Timestamp: time.Now().UnixNano() / int64(time.Millisecond),
+	}
+	if err := coverage.parseProfiles(profiles, pkgMap, ignore, byFiles); err != nil {
 		return fmt.Errorf("parse coverage profiles: %w", err)
 	}
 
@@ -141,9 +143,9 @@ func getPackageName(filename string) string {
 
 func findAbsFilePath(pkg *packages.Package, profileName string) string {
 	filename := filepath.Base(profileName)
-	for _, fullpath := range pkg.GoFiles {
-		if filepath.Base(fullpath) == filename {
-			return fullpath
+	for _, fullPath := range pkg.GoFiles {
+		if filepath.Base(fullPath) == filename {
+			return fullPath
 		}
 	}
 	return ""
@@ -153,12 +155,13 @@ func (cov *Coverage) parseProfiles(
 	profiles []*cover.Profile,
 	pkgMap map[string]*packages.Package,
 	ignore *Ignore,
+	byFiles bool,
 ) error {
 	cov.Packages = []*Package{}
 	for _, profile := range profiles {
 		pkgName := getPackageName(profile.FileName)
 		pkgPkg := pkgMap[pkgName]
-		if err := cov.parseProfile(profile, pkgPkg, ignore); err != nil {
+		if err := cov.parseProfile(profile, pkgPkg, ignore, byFiles); err != nil {
 			return err
 		}
 	}
@@ -168,7 +171,12 @@ func (cov *Coverage) parseProfiles(
 	return nil
 }
 
-func (cov *Coverage) parseProfile(profile *cover.Profile, pkgPkg *packages.Package, ignore *Ignore) error {
+func (cov *Coverage) parseProfile(
+	profile *cover.Profile,
+	pkgPkg *packages.Package,
+	ignore *Ignore,
+	byFiles bool,
+) error {
 	if pkgPkg == nil || pkgPkg.Module == nil {
 		return errors.New("package required when using go modules")
 	}
@@ -208,6 +216,7 @@ func (cov *Coverage) parseProfile(profile *cover.Profile, pkgPkg *packages.Packa
 		fset:     fset,
 		fileName: fileName,
 		fileData: data,
+		byFiles:  byFiles,
 		classes:  make(map[string]*Class),
 		pkg:      pkg,
 		profile:  profile,
@@ -222,6 +231,7 @@ type fileVisitor struct {
 	fileName string
 	fileData []byte
 	pkg      *Package
+	byFiles  bool
 	classes  map[string]*Class
 	profile  *cover.Profile
 }
@@ -269,9 +279,7 @@ func (v *fileVisitor) method(n *ast.FuncDecl) *Method {
 
 func (v *fileVisitor) class(n *ast.FuncDecl) *Class {
 	var className string
-	if byFiles {
-		//className = filepath.Base(v.fileName)
-		//
+	if v.byFiles {
 		// NOTE(boumenot): ReportGenerator creates links that collide if names are not distinct.
 		// This could be an issue in how I am generating the report, but I have not been able
 		// to figure it out.  The work around is to generate a fully qualified name based on
