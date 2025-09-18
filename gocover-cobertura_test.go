@@ -88,7 +88,7 @@ func TestMainHelp(t *testing.T) {
 	if !bytes.Contains(outputString, []byte("gocover-cobertura converts Go code coverage profiles")) {
 		t.Errorf("missing help text")
 	}
-	if !bytes.Contains(outputString, []byte("It reads from standard input and writes to standard output.")) {
+	if !bytes.Contains(outputString, []byte("By default it reads from stdin and writes to stdout")) {
 		t.Errorf("missing help text")
 	}
 	if !bytes.Contains(outputString, []byte("Usage:")) {

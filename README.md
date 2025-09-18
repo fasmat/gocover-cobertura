@@ -49,6 +49,18 @@ the source files.
 
 Some flags can be passed (each flag should only be used once):
 
+- `-h`
+
+  show help
+
+- `-f FILENAME`
+
+  The relative or absolute path to coverage file that should be converted (default: stdin)
+
+- `-o FILENAME`
+
+  The relative or absolute path to output file for the cobertura report (default: stdout)
+
 - `-by-files`
 
   Code coverage is organized by class by default. This flag organizes code
@@ -83,7 +95,7 @@ Some flags can be passed (each flag should only be used once):
   ignore generated files. Typically files containing a comment indicating that the file has been automatically
   generated. See `genCodeRe` regexp in [ignore.go](ignore.go).
 
-- `-build-tags`
+- `-tags`
 
   comma-separated list of build tags to consider when looking for source files. This should match the build tags
   used when running `go test -coverprofile=...`.

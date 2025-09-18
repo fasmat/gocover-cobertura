@@ -29,6 +29,27 @@ import (
 
 const coberturaDTDDecl = `<!DOCTYPE coverage SYSTEM "http://cobertura.sourceforge.net/xml/coverage-04.dtd">`
 
+func printHelp() {
+	fmt.Fprintf(os.Stderr, "gocover-cobertura converts Go code coverage profiles to Cobertura XML format.\n\n")
+
+	fmt.Fprintf(os.Stderr, "By default it reads from stdin and writes to stdout.\n")
+	fmt.Fprintf(os.Stderr, "It can be used to generate code coverage reports compatible with tools that\n")
+	fmt.Fprintf(os.Stderr, "expect Cobertura format, such as SonarQube or Jenkins.\n\n")
+
+	fmt.Fprintf(os.Stderr, "Note: this tool needs to be run in the root folder of the Go module (directory with\n")
+	fmt.Fprintf(os.Stderr, "the go.mod file) that was used to produce the coverage profile.\n\n")
+
+	fmt.Fprintf(os.Stderr, "Usage:\n")
+	fmt.Fprintf(os.Stderr, "  go test -coverprofile=coverage.out ./...\n")
+	if runtime.GOOS == "windows" {
+		fmt.Fprintf(os.Stderr, "  type coverage.out | gocover-cobertura.exe > coverage.xml\n")
+	} else {
+		fmt.Fprintf(os.Stderr, "  cat coverage.out | gocover-cobertura > coverage.xml\n")
+	}
+	fmt.Fprintf(os.Stderr, "\nOptions:\n")
+	flag.PrintDefaults()
+}
+
 func main() {
 	var ignore Ignore
 	var byFiles bool
@@ -36,10 +57,8 @@ func main() {
 	inFile := os.Stdin
 	outFile := os.Stdout
 
-	inFileName := ""
-	outFileName := ""
-	flag.StringVar(&inFileName, "f", "", "path to coverage file (default: stdin)")
-	flag.StringVar(&outFileName, "o", "", "path to output file (default: stdout)")
+	inFileName := flag.String("f", "", "path to coverage file (default: stdin)")
+	outFileName := flag.String("o", "", "path to output file (default: stdout)")
 	flag.BoolVar(&help, "h", false, "show help")
 	flag.BoolVar(&byFiles, "by-files", false, "code coverage by file, not class")
 	flag.BoolVar(&ignore.GeneratedFiles, "ignore-gen-files", false, "ignore generated files")
@@ -49,40 +68,27 @@ func main() {
 	flag.Parse()
 
 	if help {
-		fmt.Fprintf(os.Stderr, "gocover-cobertura converts Go code coverage profiles to Cobertura XML format.\n\n")
-		fmt.Fprintf(os.Stderr, "It reads from standard input and writes to standard output.\n")
-		fmt.Fprintf(os.Stderr, "It can be used to generate code coverage reports compatible with tools that\n")
-		fmt.Fprintf(os.Stderr, "expect Cobertura format, such as SonarQube or Jenkins.\n\n")
-		fmt.Fprintf(os.Stderr, "Note: this tool needs to be run in a Go module (a directory with a go.mod file).\n\n")
-
-		fmt.Fprintf(os.Stderr, "Usage:\n")
-		fmt.Fprintf(os.Stderr, "  go test -coverprofile=coverage.out ./...\n")
-		if runtime.GOOS == "windows" {
-			fmt.Fprintf(os.Stderr, "  type coverage.out | gocover-cobertura.exe > coverage.xml\n")
-		} else {
-			fmt.Fprintf(os.Stderr, "  cat coverage.out | gocover-cobertura > coverage.xml\n")
-		}
-		fmt.Fprintf(os.Stderr, "\nOptions:\n")
-		flag.PrintDefaults()
+		printHelp()
 		return
 	}
-	if inFileName != "" {
+
+	if *inFileName != "" {
 		var err error
-		inFile, err = os.Open(inFileName)
+		inFile, err = os.Open(*inFileName)
 		if err != nil {
-			log.Fatalf("Failed to open input file %q: %s", inFileName, err)
+			log.Fatalf("Failed to open input file %q: %s", *inFileName, err)
 		}
 		defer inFile.Close()
 	}
-	if outFileName != "" {
+	if *outFileName != "" {
 		var err error
-		err = os.MkdirAll(filepath.Dir(outFileName), 0o755)
+		err = os.MkdirAll(filepath.Dir(*outFileName), 0o755)
 		if err != nil && !errors.Is(err, fs.ErrExist) {
-			log.Fatalf("Failed to create output directory for %q: %s", outFileName, err)
+			log.Fatalf("Failed to create output directory for %q: %s", *outFileName, err)
 		}
-		outFile, err = os.Create(outFileName)
+		outFile, err = os.Create(*outFileName)
 		if err != nil {
-			log.Fatalf("Failed to create output file %q: %s", outFileName, err)
+			log.Fatalf("Failed to create output file %q: %s", *outFileName, err)
 		}
 		defer outFile.Close()
 	}
