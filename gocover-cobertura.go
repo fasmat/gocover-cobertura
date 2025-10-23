@@ -240,11 +240,11 @@ func (cov *Coverage) parseProfile(
 	fset := token.NewFileSet()
 	parsed, err := parser.ParseFile(fset, absFilePath, nil, 0)
 	if err != nil {
-		return err
+		return fmt.Errorf("parse file %s: %w", absFilePath, err)
 	}
 	data, err := os.ReadFile(absFilePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("read file %s: %w", absFilePath, err)
 	}
 
 	if ignore.Match(fileName, data) {
