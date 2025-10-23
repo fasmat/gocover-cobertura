@@ -237,6 +237,9 @@ func (cov *Coverage) parseProfile(
 	}
 	fileName := profile.FileName[len(pkgPkg.Module.Path)+1:]
 	absFilePath := findAbsFilePath(pkgPkg, profile.FileName)
+	if absFilePath == "" {
+		return fmt.Errorf("find absolute file path for %s", profile.FileName)
+	}
 	fset := token.NewFileSet()
 	parsed, err := parser.ParseFile(fset, absFilePath, nil, 0)
 	if err != nil {
