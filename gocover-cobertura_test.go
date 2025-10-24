@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -212,7 +213,7 @@ func TestParseProfileDoesNotExist(t *testing.T) {
 	}
 
 	err := v.parseProfile(&profile, &pkg, &Ignore{}, false)
-	if !errors.Is(err, fs.ErrNotExist) {
+	if !strings.Contains(err.Error(), fmt.Sprintf("file %s not found", profile.FileName)) {
 		t.Fatalf("expected error about file not existing, got: %v", err)
 	}
 }
