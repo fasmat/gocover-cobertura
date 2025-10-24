@@ -196,14 +196,14 @@ func getPackageName(filename string) string {
 	return strings.TrimRight(strings.TrimRight(pkgName, "\\"), "/")
 }
 
-func findAbsFilePath(pkg *packages.Package, profileName string) string {
+func findAbsFilePath(pkg *packages.Package, profileName string) (string, error) {
 	filename := filepath.Base(profileName)
 	for _, fullPath := range pkg.GoFiles {
 		if filepath.Base(fullPath) == filename {
-			return fullPath
+			return fullPath, nil
 		}
 	}
-	return ""
+	return "", fmt.Errorf("file %s not found", profileName)
 }
 
 func (cov *Coverage) parseProfiles(
@@ -236,9 +236,9 @@ func (cov *Coverage) parseProfile(
 		return errors.New("package required when using go modules")
 	}
 	fileName := profile.FileName[len(pkgPkg.Module.Path)+1:]
-	absFilePath := findAbsFilePath(pkgPkg, profile.FileName)
-	if absFilePath == "" {
-		return fmt.Errorf("find absolute file path for %s", profile.FileName)
+	absFilePath, err := findAbsFilePath(pkgPkg, profile.FileName)
+	if err != nil {
+		return fmt.Errorf("find absolute file path: %w", err)
 	}
 	fset := token.NewFileSet()
 	parsed, err := parser.ParseFile(fset, absFilePath, nil, 0)
