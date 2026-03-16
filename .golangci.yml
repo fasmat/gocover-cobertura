@@ -19,6 +19,7 @@ linters:
     - intrange
     - lll
     - misspell
+    - modernize
     - nakedret
     - nestif
     - paralleltest
@@ -27,6 +28,7 @@ linters:
     - revive
     - staticcheck
     - testableexamples
+    - testpackage
     - thelper
     - tparallel
     - unused
