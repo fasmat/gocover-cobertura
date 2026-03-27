@@ -9,11 +9,13 @@ linters:
     - copyloopvar
     - depguard
     - dupl
+    - embeddedstructfieldcheck
     - errname
     - errorlint
     - exptostd
     - fatcontext
     - gocyclo
+    - godoclint
     - inamedparam
     - ineffassign
     - intrange
@@ -91,9 +93,15 @@ linters:
       context-todo: true
   exclusions:
     rules:
+      - source: "`(json|yaml).*"
+        linters:
+          - lll
       - source: "defer"
         linters:
           - errcheck
+      - path: "_test\\.go"
+        linters:
+          - dupl
 
 formatters:
   enable:
